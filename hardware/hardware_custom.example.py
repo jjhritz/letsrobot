@@ -1,5 +1,7 @@
-import mod_utils
-import hardware.max7219
+import serial
+import sys
+import logging
+log = logging.getLogger('hardware/serial_board')
 # Example for adding custom code to the controller
 module = None
 

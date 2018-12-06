@@ -12,13 +12,15 @@ Author: John J. Hritz <john-j-hritz@sbcglobal.net>
 Date: 2018/12/5
 """
 
+# TODO: This is ripe for an OOP implementation. Once we get this first pass working, it should be refactored to that end
+
 import hardware.serial_board as serial_board
 
 module = None
 
-arm_axes = None
-arm_constraints = None
-arm_position = None
+arm_axes = {}
+arm_constraints = {}
+arm_position = {}
 
 # The string names of the joints driven by stepper motors
 steppers = ('base', 'shoulder', 'elbow', 'wrist elevation', 'wrist rotation')
@@ -62,9 +64,9 @@ def max_key(joint):
 
 
 def set_constraints(robot_config):
-    """Sets the movement constraints on the arm to prevent damage to the stepper motors or environment.
+    """Sets the movement constraints on the arm to prevent damage to the arm or its environment.
 
-    Sets the minimum and maximum G-code positions on each axis so they can be checked whenever the arm is moved.
+    Sets the minimum and maximum coordinate positions on each axis so they can be checked whenever the arm is moved.
     :param robot_config: The ConfigParser object representation of letsrobot.conf
     :return: None
     """
@@ -115,11 +117,11 @@ def check_constraints(joint, pos):
     min_constr = min_key(joint)
     max_constr = max_key(joint)
 
-    if pos < arm_constraints[joint][min_constr]:
-        return arm_constraints[joint][min_constr]
+    if pos < arm_constraints[min_constr]:
+        return arm_constraints[min_constr]
 
-    elif pos > arm_constraints[joint][max_constr]:
-        return arm_constraints[joint][max_constr]
+    elif pos > arm_constraints[max_constr]:
+        return arm_constraints[max_constr]
 
     else:
         return pos
@@ -180,8 +182,7 @@ def move_arm_to(base_pos=arm_position[steppers[0]],
 
 def move_arm_by(base_inc=0, shoul_inc=0, elbow_inc=0, elev_inc=0, rot_inc=0, grip_inc=0):
     """Orders a movement of the arm to a new position relative to its current one.
-    Checks the new positions against the joint constraints, constructs the G-Code commands based on those checks,
-    and forwards the commands to the serial port.
+    Essentially just a wrapper for move_arm_to that calculates the new position based on the increment.
 
     :param base_inc: Movement increment of the base.
     :param shoul_inc: Movement increment of the shoulder.
@@ -192,8 +193,14 @@ def move_arm_by(base_inc=0, shoul_inc=0, elbow_inc=0, elev_inc=0, rot_inc=0, gri
     :return: The new arm position
     """
 
-    # Switch the arm to Relative Positioning using G91
-    serial_board.sendSerialCommand(ser, "G91")
+    arm_position[steppers[0]] += base_inc
+    arm_position[steppers[1]] += shoul_inc
+    arm_position[steppers[2]] += elbow_inc
+    arm_position[steppers[3]] += elev_inc
+    arm_position[steppers[4]] += rot_inc
+    arm_position[servos[0]] += grip_inc
+
+    return move_arm_to()
 
 
 def setup(robot_config):

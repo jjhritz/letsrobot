@@ -18,14 +18,14 @@ import hardware.serial_board as serial_board
 
 module = None
 
-arm_axes = {}
-arm_constraints = {}
-arm_position = {}
-
 # The string names of the joints driven by stepper motors
 steppers = ('base', 'shoulder', 'elbow', 'wrist elevation', 'wrist rotation')
 # The string names of the joints driven by servos
-servos = ('gripper')
+servos = ['gripper']
+
+arm_axes = {}
+arm_constraints = {}
+arm_position = {steppers[0]: 0, steppers[1]: 0, steppers[2]: 0, steppers[3]: 0, steppers[4]: 0, servos[0]: 0}
 
 
 def bind_axes(robot_config):
@@ -127,55 +127,68 @@ def check_constraints(joint, pos):
         return pos
 
 
-def move_arm_to(base_pos=arm_position[steppers[0]],
-                shoul_pos=arm_position[steppers[1]],
-                elbow_pos=arm_position[steppers[2]],
-                elev_pos=arm_position[steppers[3]],
-                rot_pos=arm_position[steppers[4]],
-                grip_pos=arm_position[servos[0]]):
+def move_arm_to(base_pos=None,
+                shoul_pos=None,
+                elbow_pos=None,
+                elev_pos=None,
+                rot_pos=None,
+                grip_pos=None):
 
     """Orders a movement of the arm to an absolute position.
     Checks the passed positions against the joint constraints, constructs the G-Code commands based on those checks,
     and forwards the commands to the serial port.
 
-    :param base_pos: The new coordinate of the base.  Default: the current position.
-    :param shoul_pos: The new coordinate of the shoulder.  Default: the current position.
-    :param elbow_pos: The new coordinate of the elbow.  Default: the current position.
-    :param elev_pos: The new coordinate of the wrist elevation.  Default: the current position.
-    :param rot_pos: The new coordinate of the rotation servo.  Default: the current position.
-    :param grip_pos: The new position of the gripper servo.  Default: the current position.
+    :param base_pos: The new coordinate of the base.  Default: None; uses the current position.
+    :param shoul_pos: The new coordinate of the shoulder.  Default: None; uses the current position.
+    :param elbow_pos: The new coordinate of the elbow.  Default: None; uses the current position.
+    :param elev_pos: The new coordinate of the wrist elevation.  None; uses the current position.
+    :param rot_pos: The new coordinate of the rotation servo.  None; uses the current position.
+    :param grip_pos: The new position of the gripper servo.  None; uses the current position.
     :return: The new arm position.
     """
 
     global arm_position
-    global ser
 
-    arm_position[steppers[0]] = check_constraints(steppers[0], base_pos)
-    arm_position[steppers[1]] = check_constraints(steppers[1], shoul_pos)
-    arm_position[steppers[2]] = check_constraints(steppers[2], elbow_pos)
-    arm_position[steppers[3]] = check_constraints(steppers[3], elev_pos)
-    arm_position[steppers[4]] = check_constraints(steppers[4], rot_pos)
-    arm_position[servos[0]] = check_constraints(servos[0], grip_pos)
+    if base_pos:
+        arm_position[steppers[0]] = check_constraints(steppers[0], base_pos)
+    if shoul_pos:
+        arm_position[steppers[1]] = check_constraints(steppers[1], shoul_pos)
+    if elbow_pos:
+        arm_position[steppers[2]] = check_constraints(steppers[2], elbow_pos)
+    if elev_pos:
+        arm_position[steppers[3]] = check_constraints(steppers[3], elev_pos)
+    if rot_pos:
+        arm_position[steppers[4]] = check_constraints(steppers[4], rot_pos)
+    if grip_pos:
+        arm_position[servos[0]] = check_constraints(servos[0], grip_pos)
 
-    # Switch the arm to Absolute Positioning using G90
-    serial_board.sendSerialCommand(ser, "G90")
+    if serial_board.ser:
+        # Switch the arm to Absolute Positioning using G90
+        serial_board.sendSerialCommand(serial_board.ser, "G90")
 
     # Construct G-Code string for movement using the G0 Linear Move command.
     # Form: G0 E<pos> X<pos> Y<pos> Z<pos>
     gcode = "G0 "
 
     for joint in steppers:
-        gcode += arm_axes[joint] + arm_position[joint] + " "
+        gcode += arm_axes[joint] + str(arm_position[joint]) + " "
 
     # Clean up trailing whitespace
     gcode = gcode.rstrip(" ")
 
-    serial_board.sendSerialCommand(ser, gcode)
+    if serial_board.ser:
+        serial_board.sendSerialCommand(serial_board.ser, gcode)
+    else:
+        print(gcode)
 
     # Construct G-code string for manipulating the gripper using the M280 Servo Position command
     # Form: M280 P<index> S<pos>
-    gcode = "M280 " + arm_axes[servos[0]] + " S" + grip_pos
-    serial_board.sendSerialCommand(ser, gcode)
+    gcode = "M280 " + arm_axes[servos[0]] + " S" + str(arm_position[servos[0]])
+
+    if serial_board.ser:
+        serial_board.sendSerialCommand(serial_board.ser, gcode)
+    else:
+        print(gcode)
 
     return arm_position
 
@@ -203,6 +216,26 @@ def move_arm_by(base_inc=0, shoul_inc=0, elbow_inc=0, elev_inc=0, rot_inc=0, gri
     return move_arm_to()
 
 
+def parse_command(command):
+    """Splits the command into a list of tuples in the form (joint, inc|abs, distance).
+    Where joint is the name of the joint (corresponds to an item in steppers or servos),
+    inc|abs is either the string "inc" or "abs" and signals whether relative or absolute movement is to be used,
+    distance is the coordinate for axis movement in the g-code
+
+    :param command: The complete command, as received from LetsRobot.tv
+    :return: The list of tuples containing all the movement commands received
+    """
+
+    split_list = command.split(';')
+    command_list = []
+    for subgroup in split_list:
+        command_list.append(tuple(subgroup.split(',')))
+    if __name__ == "__main__":
+        print(command_list)
+
+    return command_list
+
+
 def setup(robot_config):
     """Initialize options for the arm.
 
@@ -211,12 +244,16 @@ def setup(robot_config):
     """
     global module
 
-    # Set up the serial interface
-    serial_board.setup(robot_config)
+    if __name__ != "__main__":
+        # Set up the serial interface
+        serial_board.setup(robot_config)
 
     bind_axes(robot_config)
     set_constraints(robot_config)
     set_start_position(robot_config)
+
+    # Move the arm to its startup position
+    move_arm_to()
 
 
 def move(args):
@@ -228,7 +265,7 @@ def move(args):
     :return: None
     """
     # Your custom command interpreter code goes here
-
+    parse_command(args['command'])
     #
 
 
@@ -254,3 +291,11 @@ if __name__ == '__main__':
 
     setup(robot_config)
     print(steppers)
+    print(servos)
+    print(arm_axes)
+    print(arm_constraints)
+    print(arm_position)
+
+    while True:
+        command = input('Enter command: ')
+        parse_command(command)

@@ -14,7 +14,7 @@ def sendSerialCommand(ser, command):
 def setup(robot_config):
     global ser
 
-    serial_device = robot_config.get('serial', 'serial_device')
+    serialDevice = robot_config.get('serial', 'serial_device')
     serialBaud = robot_config.getint('serial', 'baud_rate')
 
     # initialize serial connection

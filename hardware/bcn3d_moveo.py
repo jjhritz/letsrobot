@@ -5,6 +5,8 @@ The MOVEO is itself essentially a repurposed 3D printer, powered by an Arduino M
 To this end, the controller must output a limited set of G-Code commands to manipulate the stepper motors.
 This implementation is an extension of the existing serial_board interface.
 
+Remember to set any extruders to Cold Extrusion in the Marlin firmware.
+
 Reference Marlin G-code documentation at: http://marlinfw.org/meta/gcode/
 
 Module: bcn3d_moveo.py
@@ -26,13 +28,16 @@ if __name__ == '__main__':
         print("Missing configparser module (python -m pip install configparser)")
         sys.exit()
 
-
-module = None
+import logging
+log = logging.getLogger('hardware/bcn3d_moveo')
 
 # The string names of the joints driven by stepper motors
 steppers = ('base', 'shoulder', 'elbow', 'wrist elevation', 'wrist rotation')
 # The string names of the joints driven by servos
 servos = tuple(['gripper'])
+
+multiple_extruders = False
+current_extruder = 0
 
 arm_axes = {}
 arm_constraints = {}
@@ -47,6 +52,7 @@ def bind_axes(robot_config: ConfigParser):
     """
     global arm_axes
     arm_axes[steppers[0]] = robot_config.get('bcn3d_moveo', 'base')
+    log.debug(steppers[0],)
     arm_axes[steppers[1]] = robot_config.get('bcn3d_moveo', 'shoulder')
     arm_axes[steppers[2]] = robot_config.get('bcn3d_moveo', 'elbow')
     arm_axes[steppers[3]] = robot_config.get('bcn3d_moveo', 'wrist_elevation')
@@ -138,6 +144,13 @@ def check_constraints(joint: str, pos: int) -> int:
         return pos
 
 
+def send_gcode(gcode: str):
+    if serial_board.ser:
+        serial_board.sendSerialCommand(serial_board.ser, gcode)
+    else:
+        print(gcode)
+
+
 def move_arm_to(base_pos: int = None,
                 shoul_pos: int = None,
                 elbow_pos: int = None,
@@ -159,6 +172,9 @@ def move_arm_to(base_pos: int = None,
     """
 
     global arm_position
+    global arm_axes
+    global multiple_extruders
+    global current_extruder
 
     if base_pos:
         arm_position[steppers[0]] = check_constraints(steppers[0], base_pos)
@@ -173,33 +189,42 @@ def move_arm_to(base_pos: int = None,
     if grip_pos:
         arm_position[servos[0]] = check_constraints(servos[0], grip_pos)
 
-    if serial_board.ser:
-        # Switch the arm to Absolute Positioning using G90
-        serial_board.sendSerialCommand(serial_board.ser, "G90")
+    # Switch the arm to Absolute Positioning using G90
+    send_gcode("G90")
 
     # Construct G-Code string for movement using the G0 Linear Move command.
     # Form: G0 E<pos> X<pos> Y<pos> Z<pos>
     gcode = "G0 "
 
     for joint in steppers:
-        gcode += arm_axes[joint] + str(arm_position[joint]) + " "
+        # Change tool if using multiple extruders and the next extruder is not the current extruder
+        if multiple_extruders and ('E' in arm_axes[joint]) and (int(arm_axes[joint].lstrip('E')) != current_extruder):
+            # Send existing command
+            send_gcode(gcode)
+
+            extruder_num = int(arm_axes[joint].lstrip('E'))
+
+            # Construct and send tool change command
+            gcode = "T" + str(extruder_num)
+            send_gcode(gcode)
+            current_extruder = extruder_num
+
+            # Begin new G-Code string
+            gcode = "G0 "
+
+        # Append joint to gcode move command; remove any trailing digits from the axis name
+        gcode += arm_axes[joint].rstrip('1234567890') + str(arm_position[joint]) + " "
 
     # Clean up trailing whitespace
     gcode = gcode.rstrip(" ")
 
-    if serial_board.ser:
-        serial_board.sendSerialCommand(serial_board.ser, gcode)
-    else:
-        print(gcode)
+    send_gcode(gcode)
 
     # Construct G-code string for manipulating the gripper using the M280 Servo Position command
     # Form: M280 P<index> S<pos>
     gcode = "M280 " + arm_axes[servos[0]] + " S" + str(arm_position[servos[0]])
 
-    if serial_board.ser:
-        serial_board.sendSerialCommand(serial_board.ser, gcode)
-    else:
-        print(gcode)
+    send_gcode(gcode)
 
     return arm_position
 
@@ -258,6 +283,7 @@ def set_joint_position(joint: str, move_type: str, coordinate: int):
     :param coordinate: The G-Code coordinate the joint will move to
     :return: None
     """
+
     global arm_position
     try:
         if move_type == "abs":
@@ -278,6 +304,8 @@ def set_joint_position(joint: str, move_type: str, coordinate: int):
 
 def setup(robot_config: ConfigParser):
     """Initialize options for the arm.
+    Sets up serial board interface and reads user-defined setting from letsrobot.conf for axes, constraints, and
+    start position.  Enables cold extrusion to allow extruder axes to be controlled without a hot end.
 
     :param robot_config: The ConfigParser object representation of letsrobot.conf
     :return: None
@@ -288,9 +316,15 @@ def setup(robot_config: ConfigParser):
         # Set up the serial interface
         serial_board.setup(robot_config)
 
+    global multiple_extruders
+    multiple_extruders = robot_config.getboolean('bcn3d_moveo', 'multiple_extruders')
+
     bind_axes(robot_config)
     set_constraints(robot_config)
     set_start_position(robot_config)
+
+    # Disable Cold Extrusion checking and set minimum extrusion temp to 0
+    send_gcode("M302 P1 S0")
 
     # Move the arm to its startup position
     move_arm_to()

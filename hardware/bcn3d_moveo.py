@@ -5,9 +5,24 @@ The MOVEO is itself essentially a repurposed 3D printer, powered by an Arduino M
 To this end, the controller must output a limited set of G-Code commands to manipulate the stepper motors.
 This implementation is an extension of the existing serial_board interface.
 
-Remember to set any extruders to Cold Extrusion in the Marlin firmware.
+Commands on the LetsRobot.tv site must be formatted as joint,move_type,coordinate
+Where:
+joint: is the string name of a stepper motor or servo
+move_type: is a string, either "inc" or "abs" (for "incremental" or "absolute" movement)
+coordinate: is an integer, and the G-code coordinate the joint will move to.
+
+You can command multiple joints at once by separating command groups with semicolons, like this:
+base,inc,5;shoulder,abs,94;gripper,abs,10
+
+Note that, all moves in a single command are made at once.  As such, for each joint, all incremental movements will be
+summed before the the final G-code command is generated and only the last absolute move will be used.
+For your own sanity, only command each joint once in a long command.
+
+Remember to set the number of extruders you're using in the Marlin firmware's Configuration.h file.
 
 Reference Marlin G-code documentation at: http://marlinfw.org/meta/gcode/
+
+Special thanks to Nocturnal, who helped figure out how to manipulate multiple extruder axes.
 
 Module: bcn3d_moveo.py
 Author: John J. Hritz <john-j-hritz@sbcglobal.net>
@@ -16,7 +31,7 @@ Date: 2018/12/5
 
 # TODO: This is ripe for an OOP implementation. Once we get this first pass working, it should be refactored to that end
 
-import hardware.serial_board as serial_board
+import serial_board
 
 if __name__ == '__main__':
     import sys
@@ -147,8 +162,7 @@ def check_constraints(joint: str, pos: int) -> int:
 def send_gcode(gcode: str):
     if serial_board.ser:
         serial_board.sendSerialCommand(serial_board.ser, gcode)
-    else:
-        print(gcode)
+    print(gcode)
 
 
 def move_arm_to(base_pos: int = None,
@@ -204,7 +218,7 @@ def move_arm_to(base_pos: int = None,
 
             extruder_num = int(arm_axes[joint].lstrip('E'))
 
-            # Construct and send tool change command
+            # Construct and send tool change (T) command
             gcode = "T" + str(extruder_num)
             send_gcode(gcode)
             current_extruder = extruder_num
@@ -310,11 +324,14 @@ def setup(robot_config: ConfigParser):
     :param robot_config: The ConfigParser object representation of letsrobot.conf
     :return: None
     """
-    global module
 
+    """
     if __name__ != "__main__":
         # Set up the serial interface
         serial_board.setup(robot_config)
+    """
+    # Set up the serial interface
+    serial_board.setup(robot_config)
 
     global multiple_extruders
     multiple_extruders = robot_config.getboolean('bcn3d_moveo', 'multiple_extruders')
@@ -381,8 +398,8 @@ if __name__ == '__main__':
 
         def random_command() -> str:
             """Constructs a random movement command for testing purposes.
-            Command will contain between 1 and 6 segments, such that a single joint will be commanded once
-            or not at all.  Some coordinates will be out of bounds.
+            Command will contain between 1 and 6 segments, such that a single joint will be commanded only once
+            or not at all.  Some coordinates will be beyond the default constraints.
 
             :return: A properly formatted command string that can be parsed and interpreted.
             """

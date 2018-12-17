@@ -31,7 +31,8 @@ Date: 2018/12/5
 
 # TODO: This is ripe for an OOP implementation. Once we get this first pass working, it should be refactored to that end
 
-import serial_board
+import hardware.serial_board as serial_board
+import logging
 
 if __name__ == '__main__':
     import sys
@@ -43,7 +44,6 @@ if __name__ == '__main__':
         print("Missing configparser module (python -m pip install configparser)")
         sys.exit()
 
-import logging
 log = logging.getLogger('hardware/bcn3d_moveo')
 
 # The string names of the joints driven by stepper motors
@@ -55,6 +55,7 @@ multiple_extruders = False
 current_extruder = 0
 
 arm_axes = {}
+steps_per_unit = {}
 arm_constraints = {}
 arm_position = {steppers[0]: 0, steppers[1]: 0, steppers[2]: 0, steppers[3]: 0, steppers[4]: 0, servos[0]: 0}
 
@@ -73,6 +74,14 @@ def bind_axes(robot_config: ConfigParser):
     arm_axes[steppers[3]] = robot_config.get('bcn3d_moveo', 'wrist_elevation')
     arm_axes[steppers[4]] = robot_config.get('bcn3d_moveo', 'wrist_rotation')
     arm_axes[servos[0]] = robot_config.get('bcn3d_moveo', 'gripper')
+
+
+def set_steps_per_unit(robot_config: ConfigParser):
+    """Sets the steps per unit in the Marlin firmware.
+
+    :param robot_config:
+    :return:
+    """
 
 
 def min_key(joint: str) -> str:
@@ -159,9 +168,26 @@ def check_constraints(joint: str, pos: int) -> int:
         return pos
 
 
+def sendSerialCommand(ser: Serial, command: str):
+    """Encodes and writes a string to the serial port
+
+    :param ser: The PySerial object interface for the serial port
+    :param command: The non-encoded string to be written.
+    :return: None
+    """
+
+    log.info("serial send: ", str(command.lower()))
+    ser.write(command.encode('ascii') + b"\r\n")     # write a string
+
+
 def send_gcode(gcode: str):
+    """Sends the G-code line to the serial port and prints it to the console for debugging purposes.
+
+    :param gcode: The G-code string to be sent to the arm
+    :return: None
+    """
     if serial_board.ser:
-        serial_board.sendSerialCommand(serial_board.ser, gcode)
+        sendSerialCommand(serial_board.ser, gcode)
     print(gcode)
 
 
@@ -324,6 +350,7 @@ def setup(robot_config: ConfigParser):
     :param robot_config: The ConfigParser object representation of letsrobot.conf
     :return: None
     """
+    global multiple_extruders
 
     """
     if __name__ != "__main__":
@@ -333,12 +360,17 @@ def setup(robot_config: ConfigParser):
     # Set up the serial interface
     serial_board.setup(robot_config)
 
-    global multiple_extruders
     multiple_extruders = robot_config.getboolean('bcn3d_moveo', 'multiple_extruders')
 
     bind_axes(robot_config)
     set_constraints(robot_config)
     set_start_position(robot_config)
+
+    # Empty the incoming serial buffer
+    if serial_board.ser:
+        buffer_size = serial_board.ser.inWaiting()
+        for line in serial_board.ser.read(buffer_size).decode("ascii"):
+            print(line, end='')
 
     # Disable Cold Extrusion checking and set minimum extrusion temp to 0
     send_gcode("M302 P1 S0")

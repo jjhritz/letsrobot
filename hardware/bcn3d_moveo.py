@@ -77,11 +77,35 @@ def bind_axes(robot_config: ConfigParser):
 
 
 def set_steps_per_unit(robot_config: ConfigParser):
-    """Sets the steps per unit in the Marlin firmware.
+    """Sets the steps per unit for each axis in the Marlin firmware.
 
-    :param robot_config:
-    :return:
+    :param robot_config: The ConfigParser representation of letsrobot.conf
+    :return: None
     """
+
+    steps_per_unit[steppers[0]] = robot_config.getint('bcn3d_moveo', 'base_steps')
+    steps_per_unit[steppers[1]] = robot_config.getint('bcn3d_moveo', 'shoulder_steps')
+    steps_per_unit[steppers[2]] = robot_config.getint('bcn3d_moveo', 'elbow_steps')
+    steps_per_unit[steppers[3]] = robot_config.getint('bcn3d_moveo', 'wrist_e_steps')
+    steps_per_unit[steppers[4]] = robot_config.getint('bcn3d_moveo', 'wrist_r_steps')
+
+    gcode = "M92 "
+
+    for joint in steppers:
+        # Select index for extruder
+        if multiple_extruders and ('E' in arm_axes[joint]):
+            # Send existing command
+            send_gcode(gcode)
+
+            extruder_num = int(arm_axes[joint].lstrip('E'))
+
+            # Construct and extruder steps command
+            gcode = "M92 T" + str(extruder_num) + " "
+
+        # Append joint to gcode move command; remove any trailing digits from the axis name
+        gcode += arm_axes[joint].rstrip('1234567890') + str(steps_per_unit[joint]) + " "
+
+    send_gcode(gcode)
 
 
 def min_key(joint: str) -> str:
@@ -168,7 +192,7 @@ def check_constraints(joint: str, pos: int) -> int:
         return pos
 
 
-def sendSerialCommand(ser: Serial, command: str):
+def sendSerialCommand(ser, command: str):
     """Encodes and writes a string to the serial port
 
     :param ser: The PySerial object interface for the serial port
@@ -363,6 +387,7 @@ def setup(robot_config: ConfigParser):
     multiple_extruders = robot_config.getboolean('bcn3d_moveo', 'multiple_extruders')
 
     bind_axes(robot_config)
+    set_steps_per_unit(robot_config)
     set_constraints(robot_config)
     set_start_position(robot_config)
 

@@ -89,11 +89,12 @@ def set_steps_per_unit(robot_config: ConfigParser):
     steps_per_unit[steppers[3]] = robot_config.getint('bcn3d_moveo', 'wrist_e_steps')
     steps_per_unit[steppers[4]] = robot_config.getint('bcn3d_moveo', 'wrist_r_steps')
 
+    # M92 is the Marlin code for setting steps-per-unit on an axis
     gcode = "M92 "
 
     for joint in steppers:
-        # Select index for extruder
-        if multiple_extruders and ('E' in arm_axes[joint]):
+        # If we need to set the steps-per-unit on an extruder, we need to select it with T
+        if 'E' in arm_axes[joint]:
             # Send existing command
             send_gcode(gcode)
 
@@ -295,8 +296,7 @@ def move_arm_to(base_pos: int = None,
 
 def move_arm_by(base_inc=0, shoul_inc=0, elbow_inc=0, elev_inc=0, rot_inc=0, grip_inc=0) -> list:
     """Orders a movement of the arm to a new position relative to its current one.
-    Essentially just a wrapper for move_arm_to()
-    that calculates the new position based on the increment.
+    Essentially just a wrapper for move_arm_to() that calculates the new position based on the increment.
 
     :param base_inc: Movement increment of the base.
     :param shoul_inc: Movement increment of the shoulder.

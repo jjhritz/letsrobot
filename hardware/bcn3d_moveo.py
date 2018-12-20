@@ -415,19 +415,21 @@ def move(args):
     print("Batch from site: ", args)
     print("Command from site: ", args['command'])
 
-    # Your custom command interpreter code goes here
-    command_list = parse_command(args['command'])
+    # Do not act when the button is released
+    if args(['key_position'] != "up"):
+        # Your custom command interpreter code goes here
+        command_list = parse_command(args['command'])
 
-    for command in command_list:
-        try:
-            set_joint_position(command[0], command[1], int(command[2]))
-        except IndexError:
-            print("Malformed Command: ", command, " only has ", len(command), " parts, not 3. ",
-                  "Should be of form (joint, move_type, coordinate).")
-        except TypeError or ValueError:
-            print("Malformed Command: ", command, " is not of form (str, str, int).")
+        for command in command_list:
+            try:
+                set_joint_position(command[0], command[1], int(command[2]))
+            except IndexError:
+                print("Malformed Command: ", command, " only has ", len(command), " parts, not 3. ",
+                      "Should be of form (joint, move_type, coordinate).")
+            except TypeError or ValueError:
+                print("Malformed Command: ", command, " is not of form (str, str, int).")
 
-    move_arm_to()
+        move_arm_to()
 
 
 if __name__ == '__main__':

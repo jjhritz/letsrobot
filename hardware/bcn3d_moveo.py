@@ -412,7 +412,7 @@ def move(args):
     :param args: The command dictionary received from the server
     :return: None
     """
-
+    print("Batch from site: ", args)
     print("Command from site: ", args['command'])
 
     # Your custom command interpreter code goes here

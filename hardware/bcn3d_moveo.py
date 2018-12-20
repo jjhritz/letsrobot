@@ -416,7 +416,7 @@ def move(args):
     print("Command from site: ", args['command'])
 
     # Do not act when the button is released
-    if args(['key_position'] != "up"):
+    if args['key_position'] != "up":
         # Your custom command interpreter code goes here
         command_list = parse_command(args['command'])
 

@@ -60,7 +60,7 @@ arm_constraints = {}
 arm_position = {steppers[0]: 0, steppers[1]: 0, steppers[2]: 0, steppers[3]: 0, steppers[4]: 0, servos[0]: 0}
 
 
-def bind_axes(robot_config: ConfigParser):
+def bind_axes(robot_config):
     """Defines which G-Code axis controls which joint on the arm.
 
     :param robot_config: The ConfigParser object representation of letsrobot.conf
@@ -76,7 +76,7 @@ def bind_axes(robot_config: ConfigParser):
     arm_axes[servos[0]] = robot_config.get('bcn3d_moveo', 'gripper')
 
 
-def set_steps_per_unit(robot_config: ConfigParser):
+def set_steps_per_unit(robot_config):
     """Sets the steps per unit for each axis in the Marlin firmware.
 
     :param robot_config: The ConfigParser representation of letsrobot.conf
@@ -129,7 +129,7 @@ def max_key(joint: str) -> str:
     return joint + ' max'
 
 
-def set_constraints(robot_config: ConfigParser):
+def set_constraints(robot_config):
     """Sets the movement constraints on the arm to prevent damage to the arm or its environment.
 
     Sets the minimum and maximum coordinate positions on each axis so they can be checked whenever the arm is moved.
@@ -151,7 +151,7 @@ def set_constraints(robot_config: ConfigParser):
     arm_constraints[max_key(servos[0])] = robot_config.getint('bcn3d_moveo', 'gripper_max')
 
 
-def set_start_position(robot_config: ConfigParser):
+def set_start_position(robot_config):
     """Sets the position for each joint when the robot starts up.
 
     :param robot_config: The ConfigParser object representation of letsrobot.conf
@@ -366,7 +366,7 @@ def set_joint_position(joint: str, move_type: str, coordinate: int):
             print("Malformed command: ", str(coordinate), " is not an integer. ", (joint, move_type, coordinate))
 
 
-def setup(robot_config: ConfigParser):
+def setup(robot_config):
     """Initialize options for the arm.
     Sets up serial board interface and reads user-defined setting from letsrobot.conf for axes, constraints, and
     start position.  Enables cold extrusion to allow extruder axes to be controlled without a hot end.
@@ -389,7 +389,7 @@ def setup(robot_config: ConfigParser):
     bind_axes(robot_config)
     set_steps_per_unit(robot_config)
     set_constraints(robot_config)
-    set_start_position(robot_config)
+    #set_start_position(robot_config)
 
     # Empty the incoming serial buffer
     if serial_board.ser:
@@ -401,7 +401,7 @@ def setup(robot_config: ConfigParser):
     send_gcode("M302 P1 S0")
 
     # Move the arm to its startup position
-    move_arm_to()
+    #move_arm_to()
 
 
 def move(args):
